@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Email Розсилка</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="p-4 bg-light">
+
+    <div class="container" style="max-width: 800px;">
+        <h3 class="mb-4 text-center">Розсилка повідомлень</h3>
+
+        <div class="p-3 bg-white border rounded mb-4">
+            <h6 class="text-secondary mb-3">Надіслати лист усім</h6>
+            <input type="text" id="mailSubject" class="form-control mb-2" placeholder="Тема листа">
+            <textarea id="mailText" class="form-control mb-2" rows="3" placeholder="Текст повідомлення"></textarea>
+            <button class="btn btn-dark w-100" onclick="sendMail()">Надіслати всім</button>
+            <div id="mailStatus" class="mt-2 small"></div>
+        </div>
+
+        <div class="p-3 bg-white border rounded mb-4">
+            <h6 class="text-secondary mb-3" id="formTitle">Новий контакт</h6>
+            <input type="hidden" id="contactId">
+            <div class="row g-2 mb-2">
+                <div class="col"><input type="text" id="lastName" class="form-control" placeholder="Прізвище"></div>
+                <div class="col"><input type="text" id="firstName" class="form-control" placeholder="Ім'я"></div>
+                <div class="col"><input type="text" id="middleName" class="form-control" placeholder="По батькові"></div>
+            </div>
+            <input type="email" id="email" class="form-control mb-2" placeholder="Email">
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" onclick="saveContact()">Зберегти</button>
+                <button class="btn btn-outline-secondary" onclick="resetForm()">Скинути</button>
+            </div>
+        </div>
+
+        <div class="bg-white border rounded p-3">
+            <h6 class="text-secondary mb-3">Список контактів</h6>
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>ПІБ</th>
+                        <th>Email</th>
+                        <th class="text-end">Дії</th>
+                    </tr>
+                </thead>
+                <tbody id="contactsTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        loadContacts();
+
+        async function loadContacts() {
+            const res = await fetch('/api/contacts');
+            const contacts = await res.json();
+            const tbody = document.getElementById('contactsTableBody');
+            tbody.innerHTML = '';
+
+            if (contacts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-2">Список порожній</td></tr>';
+                return;
+            }
+
+            contacts.forEach(c => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                <td>${c.lastName} ${c.firstName} ${c.middleName}</td>
+                <td>${c.email}</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-secondary py-0" onclick="editContact('${c._id}', '${c.lastName}', '${c.firstName}', '${c.middleName}', '${c.email}')">ред</button>
+                    <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteContact('${c._id}')">вид</button>
+                </td>
+            `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function saveContact() {
+            const id = document.getElementById('contactId').value;
+            const contact = {
+                lastName: document.getElementById('lastName').value.trim(),
+                firstName: document.getElementById('firstName').value.trim(),
+                middleName: document.getElementById('middleName').value.trim(),
+                email: document.getElementById('email').value.trim()
+            };
+
+            if (!contact.lastName || !contact.firstName || !contact.email) {
+                alert('Заповніть обов\'язкові поля');
+                return;
+            }
+
+            const method = id ? 'PUT' : 'POST';
+            const url = id ? '/api/contacts/' + id : '/api/contacts';
+
+            await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(contact)
+            });
+
+            resetForm();
+            loadContacts();
+        }
+
+        function editContact(id, lastName, firstName, middleName, email) {
+            document.getElementById('contactId').value = id;
+            document.getElementById('lastName').value = lastName;
+            document.getElementById('firstName').value = firstName;
+            document.getElementById('middleName').value = middleName;
+            document.getElementById('email').value = email;
+            document.getElementById('formTitle').innerText = 'Редагування контакту';
+        }
+
+        function resetForm() {
+            document.getElementById('contactId').value = '';
+            document.getElementById('lastName').value = '';
+            document.getElementById('firstName').value = '';
+            document.getElementById('middleName').value = '';
+            document.getElementById('email').value = '';
+            document.getElementById('formTitle').innerText = 'Новий контакт';
+        }
+
+        async function deleteContact(id) {
+            if (confirm('Видалити?')) {
+                await fetch('/api/contacts/' + id, { method: 'DELETE' });
+                loadContacts();
+            }
+        }
+
+        async function sendMail() {
+            const subject = document.getElementById('mailSubject').value.trim();
+            const text = document.getElementById('mailText').value.trim();
+            const statusDiv = document.getElementById('mailStatus');
+
+            if (!subject || !text) {
+                alert('Вкажіть тему та текст листа');
+                return;
+            }
+
+            statusDiv.className = 'mt-2 small text-muted';
+            statusDiv.innerText = 'Надсилання...';
+
+            try {
+                const res = await fetch('/api/send-mail', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subject, text })
+                });
+                const data = await res.json();
+                statusDiv.className = 'mt-2 small ' + (res.ok ? 'text-success' : 'text-danger');
+                statusDiv.innerText = data.message || data.error;
+            } catch {
+                statusDiv.className = 'mt-2 small text-danger';
+                statusDiv.innerText = 'Помилка';
+            }
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
